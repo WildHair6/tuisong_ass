@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    color: #2d3436;
+    line-height: 1.8;
+    max-width: 680px;
+    margin: 0 auto;
+    background: #f5f6fa;
+    padding: 0;
+}
+
+/* === 顶部封面 === */
+.cover {
+    background: linear-gradient(135deg, #0c2461 0%, #1e3799 40%, #4a69bd 100%);
+    color: #fff;
+    padding: 40px 28px 30px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.cover::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -30%;
+    width: 300px;
+    height: 300px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 50%;
+}
+.cover::after {
+    content: '';
+    position: absolute;
+    bottom: -40%;
+    left: -20%;
+    width: 250px;
+    height: 250px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 50%;
+}
+.cover .logo {
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 16px;
+    font-weight: 300;
+}
+.cover h1 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.4;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 1;
+}
+.cover .meta {
+    font-size: 13px;
+    opacity: 0.65;
+}
+.cover .meta span {
+    margin: 0 6px;
+}
+
+/* === 数据看板 === */
+.dashboard {
+    display: flex;
+    margin: -20px 16px 20px;
+    position: relative;
+    z-index: 2;
+}
+.dash-card {
+    flex: 1;
+    background: #fff;
+    text-align: center;
+    padding: 18px 8px 14px;
+    border-radius: 12px;
+    margin: 0 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+.dash-card .num {
+    font-size: 28px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #0c2461, #4a69bd);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.dash-card .label {
+    font-size: 11px;
+    color: #a0a0a0;
+    margin-top: 4px;
+    letter-spacing: 1px;
+}
+
+/* === 内容区域 === */
+.content {
+    padding: 0 16px;
+}
+
+/* === 板块标题 === */
+.section-title {
+    display: flex;
+    align-items: center;
+    margin: 28px 0 16px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #0c2461;
+}
+.section-title .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    margin-right: 10px;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.section-title .icon.fire { background: #fff3e0; }
+.section-title .icon.paper { background: #e3f2fd; }
+.section-title .line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, #dfe6e9, transparent);
+    margin-left: 12px;
+}
+
+/* === 热点分析 === */
+.trends {
+    background: #fff;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    border: 1px solid #f0f0f0;
+    position: relative;
+}
+.trends::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(to right, #e17055, #fdcb6e, #00cec9);
+    border-radius: 16px 16px 0 0;
+}
+.trends h3 {
+    font-size: 15px;
+    color: #2d3436;
+    margin: 8px 0 10px;
+    font-weight: 700;
+}
+.trends p {
+    font-size: 14px;
+    color: #555;
+    line-height: 2;
+    margin: 8px 0;
+}
+.trends strong {
+    color: #e17055;
+    font-weight: 600;
+}
+.trends li {
+    font-size: 14px;
+    color: #555;
+    line-height: 2;
+    margin: 4px 0;
+}
+.trends ul { padding-left: 20px; }
+
+/* === 论文卡片 === */
+.paper {
+    background: #fff;
+    border-radius: 16px;
+    padding: 0;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    border: 1px solid #f0f0f0;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+}
+.paper:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+.paper-head {
+    padding: 20px 20px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.rank-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #f0f4ff;
+    color: #4a69bd;
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+.rank-badge.gold {
+    background: linear-gradient(135deg, #f6d365, #fda085);
+    color: #fff;
+}
+.rank-badge.silver {
+    background: linear-gradient(135deg, #a8c0ff, #3f2b96);
+    color: #fff;
+}
+.rank-badge.bronze {
+    background: linear-gradient(135deg, #89f7fe, #66a6ff);
+    color: #fff;
+}
+.rank-badge .rank-num { font-size: 18px; line-height: 1; }
+.rank-badge .rank-label { font-size: 9px; letter-spacing: 1px; }
+.paper-head .info { flex: 1; }
+.paper-head h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2d3436;
+    line-height: 1.5;
+    margin-bottom: 6px;
+}
+.paper-head .authors {
+    font-size: 12px;
+    color: #a0a0a0;
+}
+
+/* 评分条 */
+.score-row {
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.score-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.score-pill.high { background: #d4edda; color: #155724; }
+.score-pill.mid { background: #fff3cd; color: #856404; }
+.score-pill .star { margin-right: 4px; }
+.source-tag {
+    font-size: 11px;
+    color: #999;
+    background: #f8f9fa;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+/* 摘要 */
+.summary-box {
+    margin: 0 20px;
+    padding: 14px 16px;
+    background: #f8f9fc;
+    border-radius: 10px;
+    border-left: 3px solid #4a69bd;
+}
+.summary-box .label {
+    font-size: 12px;
+    color: #4a69bd;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+.summary-box p {
+    font-size: 14px;
+    color: #444;
+    line-height: 1.9;
+}
+
+/* 评价指标 */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin: 14px 20px;
+}
+.metric-item {
+    background: #fafbfc;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+}
+.metric-item .m-icon { font-size: 18px; margin-bottom: 4px; }
+.metric-item .m-label {
+    font-size: 10px;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.metric-item .m-text {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.5;
+    margin-top: 4px;
+}
+
+/* 标签 & 链接 */
+.paper-footer {
+    padding: 12px 20px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #f0f4ff;
+    color: #4a69bd;
+    font-weight: 500;
+}
+.links a {
+    display: inline-block;
+    font-size: 12px;
+    color: #4a69bd;
+    text-decoration: none;
+    padding: 4px 10px;
+    border: 1px solid #dce3f0;
+    border-radius: 6px;
+    margin-left: 4px;
+    font-weight: 500;
+}
+.links a:hover {
+    background: #4a69bd;
+    color: #fff;
+}
+
+/* === 底部 === */
+.footer-wrap {
+    background: #fff;
+    margin: 24px 0 0;
+    padding: 28px 20px;
+    text-align: center;
+    border-top: 1px solid #eee;
+}
+.footer-wrap .brand {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0c2461;
+    margin-bottom: 8px;
+}
+.footer-wrap .slogan {
+    font-size: 12px;
+    color: #bbb;
+    line-height: 1.8;
+}
+.footer-wrap .divider {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(to right, #4a69bd, transparent);
+    margin: 12px auto;
+}
+</style>
+</head>
+<body>
+
+<!-- 封面 -->
+<div class="cover">
+    <div class="logo">{{ account_name }}</div>
+    <h1>{{ title }}</h1>
+    <div class="meta">
+        <span>{{ date_str }}</span> · 
+        <span>筛选 {{ total_fetched }} 篇</span> · 
+        <span>精选 {{ paper_count }} 篇</span>
+    </div>
+</div>
+
+<!-- 数据看板 -->
+<div class="dashboard">
+    <div class="dash-card">
+        <div class="num">{{ total_fetched }}</div>
+        <div class="label">今日新论文</div>
+    </div>
+    <div class="dash-card">
+        <div class="num">{{ paper_count }}</div>
+        <div class="label">精选推荐</div>
+    </div>
+    <div class="dash-card">
+        <div class="num">{{ avg_score }}</div>
+        <div class="label">平均评分</div>
+    </div>
+</div>
+
+<div class="content">
+
+<!-- 研究热点 -->
+{% if trends %}
+<div class="section-title">
+    <span class="icon fire">🔥</span>
+    今日研究热点
+    <span class="line"></span>
+</div>
+<div class="trends">
+    {{ trends_html }}
+</div>
+{% endif %}
+
+<!-- 论文列表 -->
+<div class="section-title">
+    <span class="icon paper">📄</span>
+    精选论文详解
+    <span class="line"></span>
+</div>
+
+{% for paper in papers %}
+<div class="paper">
+    <div class="paper-head">
+        <div class="rank-badge {{ 'gold' if loop.index == 1 else 'silver' if loop.index == 2 else 'bronze' if loop.index == 3 else '' }}">
+            <span class="rank-num">{{ loop.index }}</span>
+            <span class="rank-label">TOP</span>
+        </div>
+        <div class="info">
+            <h3>{{ paper.title }}</h3>
+            <div class="authors">{{ paper.authors[:5] | join(' · ') }}</div>
+        </div>
+    </div>
+
+    <div class="score-row">
+        <span class="score-pill {{ 'high' if paper.score >= 8 else 'mid' }}">
+            <span class="star">{{ '⭐' if paper.score >= 9 else '★' }}</span>
+            {{ "%.1f" | format(paper.score) }} / 10
+        </span>
+        {% if paper.arxiv_id.startswith('cr-') %}
+        <span class="source-tag">📚 期刊论文</span>
+        {% elif paper.arxiv_id.startswith('oa-') %}
+        <span class="source-tag">🌐 OpenAlex</span>
+        {% elif paper.arxiv_id.startswith('s2-') %}
+        <span class="source-tag">🔬 Semantic Scholar</span>
+        {% else %}
+        <span class="source-tag">📦 arXiv</span>
+        {% endif %}
+    </div>
+
+    <div class="summary-box">
+        <div class="label">中文摘要</div>
+        <p>{{ paper.summary_zh }}</p>
+    </div>
+
+    <div class="metrics-grid">
+        <div class="metric-item">
+            <div class="m-icon">💡</div>
+            <div class="m-label">创新点</div>
+            <div class="m-text">{{ paper.innovation }}</div>
+        </div>
+        <div class="metric-item">
+            <div class="m-icon">🎯</div>
+            <div class="m-label">相关性</div>
+            <div class="m-text">{{ paper.relevance }}</div>
+        </div>
+        <div class="metric-item">
+            <div class="m-icon">🛠️</div>
+            <div class="m-label">应用价值</div>
+            <div class="m-text">{{ paper.practical_value }}</div>
+        </div>
+    </div>
+
+    <div class="paper-footer">
+        <div class="tags">
+            {% for kw in paper.keywords_matched %}
+            <span class="tag">{{ kw }}</span>
+            {% endfor %}
+            {% for cat in paper.categories[:2] %}
+            <span class="tag">{{ cat }}</span>
+            {% endfor %}
+        </div>
+        <div class="links">
+            <a href="{{ paper.url }}" target="_blank">📄 原文</a>
+            {% if paper.pdf_url %}
+            <a href="{{ paper.pdf_url }}" target="_blank">📥 PDF</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+</div>
+
+<!-- 底部 -->
+<div class="footer-wrap">
+    <div class="brand">{{ account_name }}</div>
+    <div class="divider"></div>
+    <div class="slogan">
+        🤖 AI自动生成 · 数据来源: arXiv / CrossRef / OpenAlex<br>
+        论文评分仅供参考 · 建议阅读原文深入了解<br>
+        {{ date_str }} · {{ author }}
+    </div>
+</div>
+
+</body>
+</html>

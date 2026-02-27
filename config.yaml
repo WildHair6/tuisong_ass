@@ -1,0 +1,123 @@
+# ============================================================
+# 论文推送工作流配置文件
+# ============================================================
+
+# --- 研究领域配置 ---
+research:
+  # arXiv 分类代码，可多选
+  # 航天器: astro-ph, cs.RO(机器人), cs.SY(控制系统)
+  # 更多分类参考: https://arxiv.org/category_taxonomy
+  arxiv_categories:
+    - "cs.RO"          # 机器人学
+    - "astro-ph.IM"    # 仪器与方法(航天)
+    - "cs.SY"          # 系统与控制
+    - "eess.SY"        # 电气工程-系统
+
+  # 关键词过滤（论文标题或摘要中需包含至少一个）
+  keywords:
+    - "spacecraft"
+    - "satellite"
+    - "robot"
+    - "robotic"
+    - "space exploration"
+    - "orbital"
+    - "UAV"
+    - "drone"
+    - "manipulator"
+    - "autonomous navigation"
+
+  # 每日推送论文数量上限
+  max_papers: 10
+
+  # 论文评分阈值(1-10)，低于此分数的论文不推送
+  score_threshold: 6
+
+# --- DeepSeek API 配置 ---
+ai:
+  api_key: "sk-e60a0aff8b5c45cfabaf4e0cde1beffd"  # 在 https://platform.deepseek.com 获取
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"                  # deepseek-chat 或 deepseek-reasoner
+  temperature: 0.3
+  max_tokens: 4096
+
+# --- 邮箱推送配置 ---
+email:
+  # SMTP 服务器配置
+  smtp_server: "smtp.126.com"     # 126邮箱
+  smtp_port: 465                   # SSL端口
+  use_ssl: true
+
+  # 发件人信息
+  sender_email: "liuzaihua_hit@126.com"
+  sender_password: "WTYLti3TCvxnT5HC"
+
+  # 收件人列表
+  receivers:
+    - "ls529458657@outlook.com"
+    - "liuzaihua_hit@126.com"
+
+  # 邮件主题前缀
+  subject_prefix: "【论文日报】"
+
+# --- 公众号文章配置 ---
+article:
+  # 公众号名称
+  account_name: "AI科研前沿"
+  # 作者名
+  author: "AI助手"
+  # 文章风格: academic(学术), popular(科普), brief(简报)
+  style: "academic"
+  # 是否生成研究热点板块
+  include_trends: true
+  # 是否生成独立的HTML文件用于公众号排版
+  save_html: true
+  # HTML输出目录
+  output_dir: "./output"
+
+# --- 日志配置 ---
+logging:
+  level: "INFO"          # DEBUG, INFO, WARNING, ERROR
+  log_file: "./logs/paper_push.log"
+  max_size_mb: 10
+  backup_count: 7
+
+# --- Semantic Scholar 补充数据源（可选）---
+semantic_scholar:
+  api_key: ""  # 可选，不填则使用免费额度（100次/5分钟）
+  # 申请地址: https://www.semanticscholar.org/product/api
+
+# --- CrossRef 数据源配置（免费）---
+# 设置邮箱进入"polite pool"可获得更快响应速度
+crossref:
+  email: ""  # 你的联系邮箱（可选，建议填写）
+
+# --- OpenAlex 数据源配置（免费）---
+# 设置邮箱进入"polite pool"
+openalex:
+  email: ""  # 你的联系邮箱（可选，建议填写）
+
+# --- 钉钉推送（可选）---
+# 在钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义 → 获取Webhook
+# 安全设置建议选"加签"，把SEC密钥填到 secret 字段
+dingtalk:
+  webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=101f1f7c6b88042aa42cc66b4cbe729a0a52d61d84012e7ffe1c45d1601743f9"
+  secret: "SEC48178e8b810537bcac43770d79ff141335e0b4a02b90a2ac658007114cee5c1b"
+
+# --- 企业微信推送（可选）---
+# 企业微信群 → 群聊设置 → 群机器人 → 添加 → 获取Webhook
+wecom:
+  webhook_url: ""    # 例: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+
+# --- 审核模式配置 ---
+# 使用 python main.py --review 进入审核模式
+# 生成文章后保存到 pending 目录，通过 Web 面板或钉钉卡片审核
+review:
+  url: ""            # 审核面板地址，如 http://你的服务器IP:5678
+  auto_email: true   # 审核通过后自动发送邮件
+  notify_dingtalk: true  # 审核结果通知钉钉
+
+# --- PDF下载配置 ---
+pdf:
+  enabled: false         # 是否默认下载PDF（也可通过 --download-pdf 参数控制）
+  max_concurrent: 3      # 并发下载数
+  timeout: 60            # 下载超时(秒)
