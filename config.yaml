@@ -34,7 +34,7 @@ research:
 
 # --- DeepSeek API 配置 ---
 ai:
-  api_key: "sk-e60a0aff8b5c45cfabaf4e0cde1beffd"  # 在 https://platform.deepseek.com 获取
+  api_key: ""  # 在 https://platform.deepseek.com 获取
   base_url: "https://api.deepseek.com"
   model: "deepseek-chat"                  # deepseek-chat 或 deepseek-reasoner
   temperature: 0.3
@@ -48,13 +48,13 @@ email:
   use_ssl: true
 
   # 发件人信息
-  sender_email: "liuzaihua_hit@126.com"
-  sender_password: "WTYLti3TCvxnT5HC"
+  sender_email: ""
+  sender_password: ""
 
   # 收件人列表
   receivers:
-    - "ls529458657@outlook.com"
-    - "liuzaihua_hit@126.com"
+    - ""
+    - ""
 
   # 邮件主题前缀
   subject_prefix: "【论文日报】"
@@ -100,8 +100,8 @@ openalex:
 # 在钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义 → 获取Webhook
 # 安全设置建议选"加签"，把SEC密钥填到 secret 字段
 dingtalk:
-  webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=101f1f7c6b88042aa42cc66b4cbe729a0a52d61d84012e7ffe1c45d1601743f9"
-  secret: "SEC48178e8b810537bcac43770d79ff141335e0b4a02b90a2ac658007114cee5c1b"
+  webhook_url: ""
+  secret: ""
 
 # --- 企业微信推送（可选）---
 # 企业微信群 → 群聊设置 → 群机器人 → 添加 → 获取Webhook
