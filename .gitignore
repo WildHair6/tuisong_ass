@@ -20,3 +20,15 @@ cache/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Test output & temp files
+bot_log.txt
+conn_result.txt
+robotics_test*.txt
+test_pubmed_quick.py
+exports/
+chat_logs/
+
+# Config with secrets (use config.yaml.example as template)
+config.yaml
+config.yaml.local

@@ -1,8 +1,13 @@
 """
-论文抓取模块 - 从 arXiv 获取最新论文
+论文抓取模块 - 论文数据结构 & arXiv 获取（可选）
 """
 
-import arxiv
+try:
+    import arxiv
+    HAS_ARXIV = True
+except ImportError:
+    HAS_ARXIV = False
+
 import logging
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -33,9 +38,11 @@ class Paper:
 
 
 class PaperFetcher:
-    """从 arXiv 抓取最新论文"""
+    """从 arXiv 抓取最新论文（可选，需要 arxiv 包）"""
 
     def __init__(self, config: dict):
+        if not HAS_ARXIV:
+            raise ImportError("arxiv 包未安装。如需使用 arXiv 数据源，请运行: pip install arxiv")
         self.categories = config["research"]["arxiv_categories"]
         self.keywords = config["research"]["keywords"]
         self.max_papers = config["research"].get("max_papers", 10)

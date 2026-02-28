@@ -1,0 +1,200 @@
+﻿# ============================================================
+# 论文推送工作流配置文件 (多频道版)
+# ============================================================
+# 支持三个独立频道:
+#   1. aerospace  - 航天领域文献
+#   2. robotics   - 机器人与AI领域文献
+#   3. finance    - 全球经济新闻与市场分析
+# 以及钉钉群 AI 助理（文献调研、综述、导出）
+
+# ============================================================
+# 频道配置 - 每个频道独立抓取、分析、推送
+# ============================================================
+channels:
+  # --- 频道1: 航天领域文献 ---
+  aerospace:
+    enabled: true
+    name: "🚀 航天前沿日报"
+    description: "航天器、卫星、空间探测、轨道力学等领域最新文献"
+    # Semantic Scholar 搜索关键词
+    keywords:
+      - "spacecraft"
+      - "satellite"
+      - "space exploration"
+      - "orbital mechanics"
+      - "space debris"
+      - "launch vehicle"
+      - "deep space"
+      - "lunar exploration"
+      - "Mars mission"
+      - "space station"
+    # Semantic Scholar fieldsOfStudy 过滤（可选）
+    fields_of_study:
+      - "Engineering"
+      - "Physics"
+      - "Computer Science"
+    max_papers: 8
+    score_threshold: 6
+    # AI 评审人设定
+    reviewer_persona: "你是一位资深的航天工程与空间科学专家，擅长航天器设计、轨道力学、空间探测任务等领域。"
+
+  # --- 频道2: 机器人与AI ---
+  robotics:
+    enabled: true
+    name: "🤖 机器人与AI日报"
+    description: "机器人学、人工智能、自动化控制、深度学习等领域最新文献"
+    keywords:
+      - "robot"
+      - "robotic manipulation"
+      - "autonomous navigation"
+      - "reinforcement learning robot"
+      - "humanoid robot"
+      - "drone UAV"
+      - "computer vision robotics"
+      - "large language model"
+      - "embodied AI"
+      - "foundation model"
+    fields_of_study:
+      - "Computer Science"
+      - "Engineering"
+    max_papers: 8
+    score_threshold: 6
+    reviewer_persona: "你是一位资深的机器人学与人工智能专家，擅长机器人控制、自主导航、深度学习、具身智能等领域。"
+
+  # --- 频道3: 全球经济与市场 ---
+  finance:
+    enabled: true
+    name: "📈 全球财经早报"
+    description: "全球经济新闻、市场分析、A股/美股/日股走势"
+    # 搜索关键词（用于 DuckDuckGo 新闻搜索）
+    search_queries:
+      - "global economy news today"
+      - "stock market analysis today"
+      - "A股 市场分析"
+      - "US stock market today"
+      - "日经指数 日股"
+      - "Federal Reserve monetary policy"
+      - "中国经济 政策"
+    # 关注的市场
+    markets:
+      - name: "上证指数"
+        symbol: "000001.SS"
+      - name: "深证成指"
+        symbol: "399001.SZ"
+      - name: "创业板指"
+        symbol: "399006.SZ"
+      - name: "标普500"
+        symbol: "^GSPC"
+      - name: "纳斯达克"
+        symbol: "^IXIC"
+      - name: "道琼斯"
+        symbol: "^DJI"
+      - name: "日经225"
+        symbol: "^N225"
+      - name: "恒生指数"
+        symbol: "^HSI"
+    max_news: 15
+
+# ============================================================
+# 全局研究配置 (兼容旧版，也用于 AI 助理)
+# ============================================================
+research:
+  arxiv_categories:
+    - "cs.RO"
+    - "astro-ph.IM"
+    - "cs.SY"
+    - "eess.SY"
+  keywords:
+    - "spacecraft"
+    - "satellite"
+    - "robot"
+    - "robotic"
+    - "space exploration"
+    - "orbital"
+    - "UAV"
+    - "drone"
+    - "manipulator"
+    - "autonomous navigation"
+  max_papers: 10
+  score_threshold: 6
+
+# --- DeepSeek API 配置 ---
+ai:
+  api_key: ""  # 在对应平台获取
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  temperature: 0.3
+  max_tokens: 4096
+
+# --- 邮箱推送配置 ---
+email:
+  smtp_server: "smtp.126.com"
+  smtp_port: 465
+  use_ssl: true
+  sender_email: ""
+  sender_password: ""
+  receivers:
+    - ""
+    - ""
+  subject_prefix: "【论文日报】"
+
+# --- 公众号文章配置 ---
+article:
+  account_name: "AI科研前沿"
+  author: "AI助手"
+  style: "academic"
+  include_trends: true
+  save_html: true
+  output_dir: "./output"
+
+# --- 日志配置 ---
+logging:
+  level: "INFO"
+  log_file: "./logs/paper_push.log"
+  max_size_mb: 10
+  backup_count: 7
+
+# --- Semantic Scholar 主数据源 ---
+semantic_scholar:
+  api_key: ""  # 在对应平台获取
+  base_url: "https://ai4scholar.net"   # 中转代理地址（留空则使用官方 api.semanticscholar.org）
+  auth_type: "bearer"                  # bearer = Authorization: Bearer xxx, apikey = x-api-key: xxx
+  max_results_per_request: 100         # 代理单次请求上限（通过分页实现更多）
+  max_results_total: 1000              # 每个关键词最大获取论文数（分页累计）
+
+# --- 钉钉推送机器人（自定义 Webhook，只发不收）---
+dingtalk:
+  webhook_url: ""
+  secret: ""
+
+# --- 钉钉 AI 助理（企业内部应用 Stream 模式，可收发消息）---
+# 需要在钉钉开放平台创建「企业内部应用」:
+#   1. 访问 https://open-dev.dingtalk.com → 应用开发 → 企业内部应用 → 创建
+#   2. 在「消息推送」中开启 Stream 模式
+#   3. 在「机器人」中启用机器人功能
+#   4. 将 AppKey 和 AppSecret 填入下方
+dingtalk_bot:
+  app_key: ""        # 企业内部应用 AppKey
+  app_secret: ""     # 企业内部应用 AppSecret
+  # AI 助理功能开关
+  enable_research: true      # 文献调研
+  enable_review: true        # 文献综述生成
+  enable_export: true        # 文献导出（BibTeX/CSV）
+  # 文件下载服务地址（用于生成下载链接）
+  file_server_url: "http://127.0.0.1:5679"
+
+# --- 企业微信推送（可选）---
+wecom:
+  webhook_url: ""
+
+# --- 审核模式配置 ---
+review:
+  url: ""
+  auto_email: true
+  notify_dingtalk: true
+
+# --- PDF下载配置 ---
+pdf:
+  enabled: false
+  max_concurrent: 3
+  timeout: 60
