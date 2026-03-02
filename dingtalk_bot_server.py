@@ -124,6 +124,10 @@ class DingTalkBotStream:
             )
             sys.exit(1)
 
+        # 启用 WebSocket 和 SDK 的详细日志
+        logging.getLogger('dingtalk_stream').setLevel(logging.DEBUG)
+        logging.getLogger('websockets').setLevel(logging.DEBUG)
+
         credential = dingtalk_stream.Credential(self.app_key, self.app_secret)
         client = dingtalk_stream.DingTalkStreamClient(credential)
 
@@ -138,6 +142,7 @@ class DingTalkBotStream:
 
         logger.info("🤖 钉钉 AI 助理启动中（Stream 模式）...")
         logger.info(f"   AppKey: {self.app_key[:8]}...")
+        logger.info(f"   Topic: {dingtalk_stream.ChatbotMessage.TOPIC}")
         client.start_forever()
 
 
@@ -163,6 +168,7 @@ class MyChatbotHandler:
 
             async def process(self, callback):
                 from dingtalk_stream import AckMessage, ChatbotMessage
+                import time as _time
                 incoming_message = ChatbotMessage.from_dict(callback.data)
 
                 # 提取文本内容
@@ -180,33 +186,234 @@ class MyChatbotHandler:
 
                 try:
                     # 先发送"处理中"提示
+                    logger.info("[DEBUG] 发送'处理中'提示...")
                     self.reply_text("🔍 正在处理您的请求，请稍候...", incoming_message)
+                    logger.info("[DEBUG] '处理中'提示已发送")
 
-                    # 调用 AI 研究助理（handle_message 是 async）
-                    result = await self._assistant.handle_message(user_message, user_id)
+                    # 调用 AI 研究助理
+                    # handle_message 是 async def 但内部全是同步调用
+                    # 用 run_in_executor 在线程池中运行，避免阻塞 WebSocket 事件循环
+                    logger.info("[DEBUG] 开始调用 handle_message...")
+                    _t0 = _time.time()
+                    import functools
+                    loop = asyncio.get_event_loop()
+
+                    def _sync_handle():
+                        """在新事件循环中运行 async handle_message"""
+                        _loop = asyncio.new_event_loop()
+                        try:
+                            return _loop.run_until_complete(
+                                self._assistant.handle_message(user_message, user_id)
+                            )
+                        finally:
+                            _loop.close()
+
+                    result = await loop.run_in_executor(None, _sync_handle)
+                    logger.info(f"[DEBUG] handle_message 完成, 耗时 {_time.time()-_t0:.1f}s")
 
                     reply_text = result.get("text", "")
                     files = result.get("files", [])
+                    logger.info(f"[DEBUG] 回复文本长度: {len(reply_text)}, 文件数: {len(files)}")
+
+                    file_server = self._config.get("dingtalk_bot", {}).get(
+                        "file_server_url", "http://127.0.0.1:5679")
 
                     # 如果有文件，附加下载链接
+                    file_links = ""
                     if files:
-                        file_server = self._config.get("dingtalk_bot", {}).get(
-                            "file_server_url", "http://127.0.0.1:5679")
-                        reply_text += "\n\n---\n📥 **文件下载:**\n"
+                        file_links += "\n\n---\n📥 **文件下载:**\n"
                         for f in files:
                             url = f.get("url", "")
                             if url and not url.startswith("http"):
                                 url = f"{file_server}{url}"
-                            reply_text += f"- [{f['name']}]({url})\n"
+                            file_links += f"- [{f['name']}]({url})\n"
 
-                    # 回复 Markdown 消息
-                    self.reply_markdown("AI 助理回复", reply_text[:20000], incoming_message)
+                    # 钉钉 Markdown 消息字符限制约 5000 字
+                    DINGTALK_MAX_LEN = 4500
+
+                    if len(reply_text) + len(file_links) <= DINGTALK_MAX_LEN:
+                        # 短回复: 直接发送
+                        logger.info(f"[DEBUG] 发送 Markdown 回复 ({len(reply_text)} chars)...")
+                        resp = self.reply_markdown("AI 助理回复", reply_text + file_links,
+                                                   incoming_message)
+                        logger.info(f"[DEBUG] Markdown 回复结果: {resp}")
+                    else:
+                        # 长回复: 生成摘要 + 保存完整内容为 Word 附件
+                        logger.info(f"[DEBUG] 回复过长({len(reply_text)} chars), 生成摘要+Word附件")
+
+                        # 保存完整内容为 Word 文档
+                        word_url = self._save_as_word(reply_text, user_message)
+                        if word_url:
+                            download_link = f"{file_server}{word_url}"
+                            file_links += f"\n📄 **完整结果:** [{os.path.basename(word_url)}]({download_link})\n"
+
+                        # 生成简要摘要（取前几条 + 统计信息）
+                        summary = self._make_summary(reply_text, DINGTALK_MAX_LEN - len(file_links) - 200)
+                        final_text = summary + file_links
+
+                        logger.info(f"[DEBUG] 发送摘要 ({len(final_text)} chars) + Word附件")
+                        resp = self.reply_markdown("AI 助理回复", final_text, incoming_message)
+                        logger.info(f"[DEBUG] 摘要回复结果: {resp}")
 
                 except Exception as e:
                     logger.error(f"处理消息失败: {e}", exc_info=True)
-                    self.reply_text(f"❌ 处理消息时发生错误: {str(e)[:200]}", incoming_message)
+                    try:
+                        self.reply_text(f"❌ 处理消息时发生错误: {str(e)[:200]}", incoming_message)
+                    except Exception as e2:
+                        logger.error(f"发送错误回复也失败: {e2}", exc_info=True)
 
                 return AckMessage.STATUS_OK, "OK"
+
+            def _save_as_word(self, text: str, query: str) -> str:
+                """将完整回复内容保存为 Word 文档，返回下载路径"""
+                try:
+                    from docx import Document
+                    from docx.shared import Pt, RGBColor
+                    from docx.enum.text import WD_ALIGN_PARAGRAPH
+                    from datetime import datetime as dt
+                except ImportError:
+                    logger.warning("python-docx 未安装，无法生成 Word 附件")
+                    # 回退到 txt 文件
+                    return self._save_as_txt(text, query)
+
+                try:
+                    ts = dt.now().strftime("%Y%m%d_%H%M%S")
+                    safe_query = "".join(c for c in query[:20] if c.isalnum() or c in " _-\u4e00-\u9fff")
+                    filename = f"{safe_query}_{ts}.docx"
+                    filepath = os.path.join(EXPORTS_DIR, filename)
+                    os.makedirs(EXPORTS_DIR, exist_ok=True)
+
+                    doc = Document()
+                    style = doc.styles['Normal']
+                    style.font.name = '宋体'
+                    style.font.size = Pt(10.5)
+
+                    # 标题
+                    title = doc.add_heading(f'AI 研究助理 - 文献调研结果', level=0)
+                    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+                    info = doc.add_paragraph()
+                    info.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = info.add_run(f'查询: {query}  |  生成时间: {dt.now().strftime("%Y-%m-%d %H:%M")}')
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = RGBColor(128, 128, 128)
+
+                    doc.add_paragraph()
+
+                    # 解析 Markdown 写入 Word
+                    for line in text.split('\n'):
+                        line_stripped = line.strip()
+                        if not line_stripped:
+                            doc.add_paragraph()
+                            continue
+                        if line_stripped.startswith('## '):
+                            doc.add_heading(line_stripped[3:], level=2)
+                        elif line_stripped.startswith('### '):
+                            doc.add_heading(line_stripped[4:], level=3)
+                        elif line_stripped.startswith('# '):
+                            doc.add_heading(line_stripped[2:], level=1)
+                        elif line_stripped.startswith('**') and line_stripped.endswith('**'):
+                            p = doc.add_paragraph()
+                            run = p.add_run(line_stripped.strip('*'))
+                            run.bold = True
+                        elif line_stripped.startswith('> '):
+                            p = doc.add_paragraph(line_stripped[2:])
+                            p.paragraph_format.left_indent = Pt(36)
+                            for run in p.runs:
+                                run.font.size = Pt(9)
+                                run.font.color.rgb = RGBColor(100, 100, 100)
+                        elif line_stripped.startswith('- ') or line_stripped.startswith('* '):
+                            doc.add_paragraph(line_stripped[2:], style='List Bullet')
+                        else:
+                            # 处理加粗文本
+                            if '**' in line_stripped:
+                                p = doc.add_paragraph()
+                                parts = line_stripped.split('**')
+                                for i, part in enumerate(parts):
+                                    if part:
+                                        run = p.add_run(part)
+                                        if i % 2 == 1:
+                                            run.bold = True
+                            else:
+                                doc.add_paragraph(line_stripped)
+
+                    doc.save(filepath)
+                    logger.info(f"完整结果已保存为 Word: {filepath}")
+                    return f"/download/{filename}"
+                except Exception as e:
+                    logger.error(f"保存 Word 失败: {e}", exc_info=True)
+                    return self._save_as_txt(text, query)
+
+            def _save_as_txt(self, text: str, query: str) -> str:
+                """回退: 保存为纯文本文件"""
+                try:
+                    from datetime import datetime as dt
+                    ts = dt.now().strftime("%Y%m%d_%H%M%S")
+                    safe_query = "".join(c for c in query[:20] if c.isalnum() or c in " _-\u4e00-\u9fff")
+                    filename = f"{safe_query}_{ts}.txt"
+                    filepath = os.path.join(EXPORTS_DIR, filename)
+                    os.makedirs(EXPORTS_DIR, exist_ok=True)
+
+                    # 清除 Markdown 标记用于纯文本
+                    clean_text = text.replace('**', '').replace('> ', '  ')
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        f.write(f"查询: {query}\n")
+                        f.write(f"生成时间: {dt.now().strftime('%Y-%m-%d %H:%M')}\n")
+                        f.write("=" * 60 + "\n\n")
+                        f.write(clean_text)
+
+                    logger.info(f"完整结果已保存为文本: {filepath}")
+                    return f"/download/{filename}"
+                except Exception as e:
+                    logger.error(f"保存文本文件也失败: {e}")
+                    return ""
+
+            @staticmethod
+            def _make_summary(text: str, max_len: int) -> str:
+                """从完整回复中提取摘要（标题 + 前几条结果 + 统计）"""
+                lines = text.split('\n')
+                summary_lines = []
+                paper_count = 0
+                total_papers = 0
+                in_header = True
+                max_show = 5  # 摘要中最多显示几条文献
+
+                for line in lines:
+                    stripped = line.strip()
+
+                    # 保留头部信息（标题、搜索说明等）
+                    if in_header:
+                        summary_lines.append(line)
+                        if stripped == '':
+                            # 检查是否已经过了头部区域
+                            if any(s.startswith('## ') or s.startswith('> 找到') for s in summary_lines):
+                                in_header = False
+                        continue
+
+                    # 计算论文总数
+                    if stripped.startswith('**') and stripped[2:3].isdigit():
+                        total_papers += 1
+
+                    # 摘要中只保留前 N 条文献
+                    if total_papers <= max_show:
+                        summary_lines.append(line)
+                    elif total_papers == max_show + 1 and paper_count == 0:
+                        paper_count = 1  # 标记已超出
+
+                result = '\n'.join(summary_lines)
+
+                # 如果超出限制，按行截断
+                if len(result) > max_len:
+                    result = result[:max_len]
+                    last_newline = result.rfind('\n')
+                    if last_newline > max_len // 2:
+                        result = result[:last_newline]
+
+                # 添加省略提示
+                if total_papers > max_show:
+                    result += f"\n\n---\n> ⚡ 以上仅显示前 {max_show} 条，共 {total_papers} 篇文献。完整结果请查看附件。\n"
+
+                return result
 
         return _Handler(assistant, config)
 

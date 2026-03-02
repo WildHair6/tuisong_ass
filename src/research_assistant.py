@@ -566,7 +566,18 @@ class ResearchAssistant:
         if not unique_papers:
             return {"text": f"未找到与 **{query_zh}** 相关的文献，请尝试换个关键词。"}
 
-        # 构建结果
+        # ========== 自动导出 BibTeX + Excel ==========
+        files = self._do_export(unique_papers, "all", query_zh)
+        # 如果用户指定了其他格式，也额外导出
+        if export_format and export_format not in ("bib", "bibtex", "excel", "xlsx", "all"):
+            extra_files = self._do_export(unique_papers, export_format, query_zh)
+            files.extend(extra_files)
+
+        # ========== 生成 AI 研究总结 ==========
+        logger.info(f"  正在生成 AI 研究总结...")
+        summary = self._generate_research_summary(unique_papers, query_zh, search_query)
+
+        # ========== 构建简洁的钉钉回复 ==========
         lines = []
         lines.append(f"## 📚 文献调研: {query_zh}")
         lines.append(f"> 搜索词: `{search_query}`")
@@ -574,8 +585,6 @@ class ResearchAssistant:
             lines.append(f"> 作者: `{author_name}`")
         if institution:
             lines.append(f"> 机构: `{institution}`")
-        if search_query_zh and search_query_zh != search_query:
-            lines.append(f"> 中文搜索: `{search_query_zh}`")
         lines.append(f"> 找到 **{len(unique_papers)}** 篇相关文献 ({year_from or '...'}-{year_to or '...'})")
         # 标记数据来源
         pubmed_count = sum(1 for p in unique_papers if getattr(p, '_source', '') == 'pubmed')
@@ -584,38 +593,24 @@ class ResearchAssistant:
             lines.append(f"> 📊 数据来源: Semantic Scholar {ss_count} 篇 + PubMed {pubmed_count} 篇")
         lines.append("")
 
-        for i, p in enumerate(unique_papers, 1):
-            citation = getattr(p, '_citation_count', 0) or 0
-            year = getattr(p, '_year', '') or ''
-            venue = getattr(p, '_venue', '') or ''
-            authors_str = ', '.join(p.authors[:3])
-            if len(p.authors) > 3:
-                authors_str += ' et al.'
-
-            lines.append(f"**{i}. {p.title}**")
-            lines.append(f"> 👤 {authors_str}")
-            info_parts = []
-            if year:
-                info_parts.append(f"📅 {year}")
-            if venue:
-                info_parts.append(f"📖 {venue}")
-            info_parts.append(f"📊 引用 {citation}")
-            source = getattr(p, '_source', '')
-            if source == 'pubmed':
-                info_parts.append("🏥 PubMed")
-            lines.append(f"> {' | '.join(info_parts)}")
-            if p.abstract:
-                lines.append(f"> 📝 {p.abstract[:150]}...")
-            lines.append(f"> 🔗 [查看论文]({p.url})")
+        # AI 总结
+        if summary:
+            lines.append(summary)
             lines.append("")
 
-        result = {"text": "\n".join(lines)}
+        # 仅显示 Top 5 高引论文概览
+        lines.append("### 🏆 高引代表作 (Top 5)")
+        for i, p in enumerate(unique_papers[:5], 1):
+            citation = getattr(p, '_citation_count', 0) or 0
+            year = getattr(p, '_year', '') or ''
+            authors_str = ', '.join(p.authors[:2])
+            if len(p.authors) > 2:
+                authors_str += ' et al.'
+            lines.append(f"**{i}.** {p.title}")
+            lines.append(f"> {authors_str} ({year}) | 引用 {citation}")
+            lines.append("")
 
-        # 如果需要导出
-        if export_format:
-            files = self._do_export(unique_papers, export_format, query_zh)
-            result["files"] = files
-
+        result = {"text": "\n".join(lines), "files": files}
         return result
 
     def _handle_review(self, params: dict) -> Dict[str, Any]:
@@ -1815,7 +1810,7 @@ class ResearchAssistant:
             return {"text": "对话导出失败，请稍后重试。"}
 
     def _do_export(self, papers: List[Paper], fmt: str, topic: str) -> List[Dict]:
-        """执行文献导出 — 支持 BibTeX / CSV / Excel / Word"""
+        """执行文献导出 — 支持 BibTeX / CSV / Excel / Word / all"""
         files = []
         safe_topic = re.sub(r'[^\w\u4e00-\u9fff]', '_', topic)[:30]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1845,12 +1840,72 @@ class ResearchAssistant:
             # 单独导出 Word（无综述，只是文献列表）
             _add_file(self.exporter.export_excel(papers, prefix), f"{safe_topic}.xlsx")
 
+        elif fmt == "all":
+            # 同时导出 BibTeX + Excel
+            _add_file(self.exporter.export_bibtex(papers, prefix), f"{safe_topic}.bib")
+            _add_file(self.exporter.export_excel(papers, prefix), f"{safe_topic}.xlsx")
+
         else:
             # 默认导出 BibTeX + Excel
             _add_file(self.exporter.export_bibtex(papers, prefix), f"{safe_topic}.bib")
             _add_file(self.exporter.export_excel(papers, prefix), f"{safe_topic}.xlsx")
 
         return files
+
+    def _generate_research_summary(self, papers: List[Paper], query_zh: str, query_en: str) -> str:
+        """用 AI 生成文献调研的简要总结分析"""
+        # 收集论文信息（取 top 20 篇用于总结）
+        top_papers = papers[:20]
+        papers_info = ""
+        for i, p in enumerate(top_papers, 1):
+            citation = getattr(p, '_citation_count', 0) or 0
+            year = getattr(p, '_year', '') or ''
+            venue = getattr(p, '_venue', '') or ''
+            papers_info += f"{i}. [{year}] {p.title} (引用:{citation}, 期刊:{venue})\n"
+            if p.abstract:
+                papers_info += f"   摘要: {p.abstract[:120]}\n"
+
+        # 统计年份分布
+        years = [getattr(p, '_year', 0) or 0 for p in papers if getattr(p, '_year', 0)]
+        year_dist = {}
+        for y in years:
+            year_dist[y] = year_dist.get(y, 0) + 1
+        year_dist_str = ', '.join(f"{k}:{v}篇" for k, v in sorted(year_dist.items())[-5:])
+
+        prompt = f"""你是一位学术研究分析专家。请根据以下与「{query_zh}」相关的 {len(papers)} 篇文献，
+撰写一段简洁的研究领域总结（300-500字），包含：
+
+1. **研究现状概述**：该领域的整体研究状态和主要方向
+2. **主要方法/技术**：最常用的几种研究方法或技术路线
+3. **研究趋势**：近年来的发展趋势或热点变化
+4. **关键发现**：重要的研究结论或突破
+
+统计信息：共 {len(papers)} 篇文献，年份分布: {year_dist_str}
+
+代表性文献列表:
+{papers_info}
+
+要求:
+- 用中文撰写，语言简洁专业
+- 不要列举论文标题，要概括性总结
+- 直接输出总结内容，不要加标题"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "你是学术研究分析专家，擅长总结文献调研结果。"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000,
+            )
+            summary = response.choices[0].message.content.strip()
+            logger.info(f"  AI 研究总结已生成 ({len(summary)} 字)")
+            return summary
+        except Exception as e:
+            logger.error(f"  AI 研究总结生成失败: {e}")
+            return ""
 
     def _help_text(self) -> str:
         """生成帮助信息"""

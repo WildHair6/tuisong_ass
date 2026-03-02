@@ -24,6 +24,7 @@ Thumbs.db
 # Test output & temp files
 bot_log.txt
 conn_result.txt
+test_stream.txt
 robotics_test*.txt
 test_pubmed_quick.py
 exports/
