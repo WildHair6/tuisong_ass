@@ -184,85 +184,92 @@ class MyChatbotHandler:
                                     incoming_message)
                     return AckMessage.STATUS_OK, "OK"
 
-                try:
-                    # 先发送"处理中"提示
-                    logger.info("[DEBUG] 发送'处理中'提示...")
-                    self.reply_text("🔍 正在处理您的请求，请稍候...", incoming_message)
-                    logger.info("[DEBUG] '处理中'提示已发送")
-
-                    # 调用 AI 研究助理
-                    # handle_message 是 async def 但内部全是同步调用
-                    # 用 run_in_executor 在线程池中运行，避免阻塞 WebSocket 事件循环
-                    logger.info("[DEBUG] 开始调用 handle_message...")
-                    _t0 = _time.time()
-                    import functools
-                    loop = asyncio.get_event_loop()
-
-                    def _sync_handle():
-                        """在新事件循环中运行 async handle_message"""
-                        _loop = asyncio.new_event_loop()
-                        try:
-                            return _loop.run_until_complete(
-                                self._assistant.handle_message(user_message, user_id)
-                            )
-                        finally:
-                            _loop.close()
-
-                    result = await loop.run_in_executor(None, _sync_handle)
-                    logger.info(f"[DEBUG] handle_message 完成, 耗时 {_time.time()-_t0:.1f}s")
-
-                    reply_text = result.get("text", "")
-                    files = result.get("files", [])
-                    logger.info(f"[DEBUG] 回复文本长度: {len(reply_text)}, 文件数: {len(files)}")
-
-                    file_server = self._config.get("dingtalk_bot", {}).get(
-                        "file_server_url", "http://127.0.0.1:5679")
-
-                    # 如果有文件，附加下载链接
-                    file_links = ""
-                    if files:
-                        file_links += "\n\n---\n📥 **文件下载:**\n"
-                        for f in files:
-                            url = f.get("url", "")
-                            if url and not url.startswith("http"):
-                                url = f"{file_server}{url}"
-                            file_links += f"- [{f['name']}]({url})\n"
-
-                    # 钉钉 Markdown 消息字符限制约 5000 字
-                    DINGTALK_MAX_LEN = 4500
-
-                    if len(reply_text) + len(file_links) <= DINGTALK_MAX_LEN:
-                        # 短回复: 直接发送
-                        logger.info(f"[DEBUG] 发送 Markdown 回复 ({len(reply_text)} chars)...")
-                        resp = self.reply_markdown("AI 助理回复", reply_text + file_links,
-                                                   incoming_message)
-                        logger.info(f"[DEBUG] Markdown 回复结果: {resp}")
-                    else:
-                        # 长回复: 生成摘要 + 保存完整内容为 Word 附件
-                        logger.info(f"[DEBUG] 回复过长({len(reply_text)} chars), 生成摘要+Word附件")
-
-                        # 保存完整内容为 Word 文档
-                        word_url = self._save_as_word(reply_text, user_message)
-                        if word_url:
-                            download_link = f"{file_server}{word_url}"
-                            file_links += f"\n📄 **完整结果:** [{os.path.basename(word_url)}]({download_link})\n"
-
-                        # 生成简要摘要（取前几条 + 统计信息）
-                        summary = self._make_summary(reply_text, DINGTALK_MAX_LEN - len(file_links) - 200)
-                        final_text = summary + file_links
-
-                        logger.info(f"[DEBUG] 发送摘要 ({len(final_text)} chars) + Word附件")
-                        resp = self.reply_markdown("AI 助理回复", final_text, incoming_message)
-                        logger.info(f"[DEBUG] 摘要回复结果: {resp}")
-
-                except Exception as e:
-                    logger.error(f"处理消息失败: {e}", exc_info=True)
+                # 异步后台处理，立即返回 ACK，避免超时
+                async def _background_process():
                     try:
-                        self.reply_text(f"❌ 处理消息时发生错误: {str(e)[:200]}", incoming_message)
-                    except Exception as e2:
-                        logger.error(f"发送错误回复也失败: {e2}", exc_info=True)
+                        # 先发送"处理中"提示
+                        logger.info("[DEBUG] 发送'处理中'提示...")
+                        self.reply_text("🔍 正在处理您的请求，请稍候...", incoming_message)
+                        logger.info("[DEBUG] '处理中'提示已发送")
+    
+                        # 调用 AI 研究助理
+                        # handle_message 是 async def 但内部全是同步调用
+                        # 用 run_in_executor 在线程池中运行，避免阻塞 WebSocket 事件循环
+                        logger.info("[DEBUG] 开始调用 handle_message...")
+                        _t0 = _time.time()
+                        import functools
+                        loop = asyncio.get_event_loop()
+    
+                        def _sync_handle():
+                            """在新事件循环中运行 async handle_message"""
+                            _loop = asyncio.new_event_loop()
+                            try:
+                                return _loop.run_until_complete(
+                                    self._assistant.handle_message(user_message, user_id)
+                                )
+                            finally:
+                                _loop.close()
+    
+                        result = await loop.run_in_executor(None, _sync_handle)
+                        logger.info(f"[DEBUG] handle_message 完成, 耗时 {_time.time()-_t0:.1f}s")
+    
+                        reply_text = result.get("text", "")
+                        files = result.get("files", [])
+                        logger.info(f"[DEBUG] 回复文本长度: {len(reply_text)}, 文件数: {len(files)}")
+    
+                        file_server = self._config.get("dingtalk_bot", {}).get(
+                            "file_server_url", "http://127.0.0.1:5679")
+    
+                        # 如果有文件，附加下载链接
+                        file_links = ""
+                        if files:
+                            file_links += "\n\n---\n📥 **文件下载:**\n"
+                            for f in files:
+                                url = f.get("url", "")
+                                if url and not url.startswith("http"):
+                                    url = f"{file_server}{url}"
+                                file_links += f"- [{f['name']}]({url})\n"
+    
+                        # 钉钉 Markdown 消息字符限制约 5000 字
+                        DINGTALK_MAX_LEN = 4500
+    
+                        if len(reply_text) + len(file_links) <= DINGTALK_MAX_LEN:
+                            # 短回复: 直接发送
+                            logger.info(f"[DEBUG] 发送 Markdown 回复 ({len(reply_text)} chars)...")
+                            resp = self.reply_markdown("AI 助理回复", reply_text + file_links,
+                                                       incoming_message)
+                            logger.info(f"[DEBUG] Markdown 回复结果: {resp}")
+                        else:
+                            # 长回复: 生成摘要 + 保存完整内容为 Word 附件
+                            logger.info(f"[DEBUG] 回复过长({len(reply_text)} chars), 生成摘要+Word附件")
+    
+                            # 保存完整内容为 Word 文档
+                            word_url = self._save_as_word(reply_text, user_message)
+                            if word_url:
+                                download_link = f"{file_server}{word_url}"
+                                file_links += f"\n📄 **完整结果:** [{os.path.basename(word_url)}]({download_link})\n"
+    
+                            # 生成简要摘要（取前几条 + 统计信息）
+                            summary = self._make_summary(reply_text, DINGTALK_MAX_LEN - len(file_links) - 200)
+                            final_text = summary + file_links
+    
+                            logger.info(f"[DEBUG] 发送摘要 ({len(final_text)} chars) + Word附件")
+                            resp = self.reply_markdown("AI 助理回复", final_text, incoming_message)
+                            logger.info(f"[DEBUG] 摘要回复结果: {resp}")
 
+                    except Exception as e:
+                        logger.error(f"处理消息失败: {e}", exc_info=True)
+                        try:
+                            self.reply_text(f"❌ 处理消息时发生错误: {str(e)[:200]}", incoming_message)
+                        except Exception as e2:
+                            logger.error(f"发送错误回复也失败: {e2}", exc_info=True)
+
+                # 启动后台任务
+                asyncio.create_task(_background_process())
+                
+                # 立即返回 OK，不让钉钉等待
                 return AckMessage.STATUS_OK, "OK"
+
 
             def _save_as_word(self, text: str, query: str) -> str:
                 """将完整回复内容保存为 Word 文档，返回下载路径"""

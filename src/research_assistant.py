@@ -573,11 +573,33 @@ class ResearchAssistant:
             extra_files = self._do_export(unique_papers, export_format, query_zh)
             files.extend(extra_files)
 
-        # ========== 生成 AI 研究总结 ==========
-        logger.info(f"  正在生成 AI 研究总结...")
-        summary = self._generate_research_summary(unique_papers, query_zh, search_query)
+        # ========== 生成 AI 详细综述报告 (用于附件) ==========
+        logger.info(f"  正在生成 AI 详细综述报告...")
+        # 传入更多论文用于详细综述 (Top 30)
+        detailed_report = self._generate_detailed_report(unique_papers, query_zh, search_query)
+        
+        # 生成 Word 格式的详细综述报告
+        if detailed_report:
+            try:
+                docx_path = self.exporter.export_review_docx(
+                    topic=query_zh,
+                    review_text=detailed_report,
+                    papers=unique_papers[:30],  # 附带参考文献
+                    filename_prefix=re.sub(r'[^\w\u4e00-\u9fff]', '_', query_zh)[:30] + f"_报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                )
+                if docx_path:
+                    file_server = self.config.get("dingtalk_bot", {}).get("file_server_url", "http://127.0.0.1:5679")
+                    fname = os.path.basename(docx_path)
+                    files.append({
+                        "name": f"详细综述报告_{query_zh[:10]}.docx",
+                        "path": docx_path,
+                        "url": f"{file_server}/download/{fname}",
+                    })
+                    logger.info(f"  详细综述报告已添加到附件: {docx_path}")
+            except Exception as e:
+                logger.warning(f"生成综述报告失败: {e}")
 
-        # ========== 构建简洁的钉钉回复 ==========
+        # ========== 构建简洁的钉钉回复 (用于对话框) ==========
         lines = []
         lines.append(f"## 📚 文献调研: {query_zh}")
         lines.append(f"> 搜索词: `{search_query}`")
@@ -593,13 +615,18 @@ class ResearchAssistant:
             lines.append(f"> 📊 数据来源: Semantic Scholar {ss_count} 篇 + PubMed {pubmed_count} 篇")
         lines.append("")
 
-        # AI 总结
-        if summary:
-            lines.append(summary)
+        # 提取详细报告的摘要作为对话框回复
+        if detailed_report:
+            # 简单提取前 500 字或只要第一部分
+            summary_short = detailed_report.split('## 2.')[0] if '## 2.' in detailed_report else detailed_report[:500] + "..."
+            lines.append(summary_short)
+            lines.append("")
+            lines.append("> 💡 **完整详细综述请查看附件 Word 文档**")
             lines.append("")
 
-        # 仅显示 Top 5 高引论文概览
+        # 仅显示 Top 5 高引代表作
         lines.append("### 🏆 高引代表作 (Top 5)")
+
         for i, p in enumerate(unique_papers[:5], 1):
             citation = getattr(p, '_citation_count', 0) or 0
             year = getattr(p, '_year', '') or ''
@@ -1852,60 +1879,73 @@ class ResearchAssistant:
 
         return files
 
-    def _generate_research_summary(self, papers: List[Paper], query_zh: str, query_en: str) -> str:
-        """用 AI 生成文献调研的简要总结分析"""
-        # 收集论文信息（取 top 20 篇用于总结）
-        top_papers = papers[:20]
-        papers_info = ""
-        for i, p in enumerate(top_papers, 1):
-            citation = getattr(p, '_citation_count', 0) or 0
-            year = getattr(p, '_year', '') or ''
-            venue = getattr(p, '_venue', '') or ''
-            papers_info += f"{i}. [{year}] {p.title} (引用:{citation}, 期刊:{venue})\n"
-            if p.abstract:
-                papers_info += f"   摘要: {p.abstract[:120]}\n"
+    def _generate_detailed_report(self, papers: List[Paper], query_zh: str, query_en: str) -> str:
+        """
+        生成详细的 AI 综述报告（用于 Word 导出）
+        """
+        if not papers:
+            return ""
 
-        # 统计年份分布
-        years = [getattr(p, '_year', 0) or 0 for p in papers if getattr(p, '_year', 0)]
+        # 选择前 40 篇高引/相关性最强的论文用于生成详细综述
+        selected = papers[:40]
+        
+        # 构建数据文本
+        papers_text = ""
         year_dist = {}
-        for y in years:
-            year_dist[y] = year_dist.get(y, 0) + 1
-        year_dist_str = ', '.join(f"{k}:{v}篇" for k, v in sorted(year_dist.items())[-5:])
+        for i, p in enumerate(selected, 1):
+            citation = getattr(p, '_citation_count', 0) or 0
+            year = getattr(p, '_year', '') or 'unknown'
+            source = getattr(p, '_source', 's2')
+            
+            # 统计年份
+            if str(year).isdigit():
+                year_dist[year] = year_dist.get(year, 0) + 1
+                
+            papers_text += f"[{i}] {p.title}\n"
+            papers_text += f"    Auth: {', '.join(p.authors[:3])} ({year})\n"
+            papers_text += f"    Cite: {citation} | Src: {source}\n"
+            if p.abstract:
+                # 摘要只取前 200 字符避免 token 超限
+                papers_text += f"    Abs: {p.abstract[:200]}...\n\n"
 
-        prompt = f"""你是一位学术研究分析专家。请根据以下与「{query_zh}」相关的 {len(papers)} 篇文献，
-撰写一段简洁的研究领域总结（300-500字），包含：
+        # 年份分布文本
+        years_summary = ", ".join([f"{y}({c})" for y, c in sorted(year_dist.items())])
 
-1. **研究现状概述**：该领域的整体研究状态和主要方向
-2. **主要方法/技术**：最常用的几种研究方法或技术路线
-3. **研究趋势**：近年来的发展趋势或热点变化
-4. **关键发现**：重要的研究结论或突破
+        prompt = f"""你是一位资深学术研究顾问。请根据提供的 {len(selected)} 篇关于「{query_zh}」({query_en}) 的文献，撰写一份**详尽的文献综述报告**。
 
-统计信息：共 {len(papers)} 篇文献，年份分布: {year_dist_str}
+## 文献列表与摘要片段:
+{papers_text}
 
-代表性文献列表:
-{papers_info}
+## 报告要求:
+1. **篇幅**: 必须详尽，总字数在 1500-2500 字以上。
+2. **结构**:
+   - **1. 研究背景与现状**: 介绍该领域的定义、重要性及近年的发展概况（200字）。
+   - **2. 核心研究主题/技术路线**: 将文献归类为3-5个主要研究方向或技术流派，针对每个方向进行详细评述（这是重点，需占60%篇幅）。
+   - **3. 关键方法与发现**: 总结该领域常用的方法论、算法模型或实验结论。
+   - **4. 现有局限与挑战**: 分析当前研究面临的主要问题和瓶颈。
+   - **5. 未来展望与创新机会**: 预测未来的发展趋势，提出潜在的研究切入点。
+3. **格式**: 使用 Markdown 格式。引用论文时必须使用 [序号] 标注，如 [1], [5]。
+4. **语气**: 专业、客观、学术化。不要使用"我"或"我们"，使用"现有研究"、"相关文献"等表述。
+5. **引用**: 尽可能多地引用提供的文献来支持论点。
 
-要求:
-- 用中文撰写，语言简洁专业
-- 不要列举论文标题，要概括性总结
-- 直接输出总结内容，不要加标题"""
+请开始撰写报告："""
 
         try:
+            # 使用较长的上下文窗口和较大的 max_tokens
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "你是学术研究分析专家，擅长总结文献调研结果。"},
+                    {"role": "system", "content": "你是资深学术顾问，擅长撰写深度文献综述。请基于提供的文献，输出一篇结构严谨、内容详实的综述报告。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
-                max_tokens=1000,
+                temperature=0.4,  # 低温度保持准确性
+                max_tokens=4000,  # 允许更长的输出
+                timeout=120.0,    # 增加超时时间以等待长文本生成
             )
-            summary = response.choices[0].message.content.strip()
-            logger.info(f"  AI 研究总结已生成 ({len(summary)} 字)")
-            return summary
+            return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"  AI 研究总结生成失败: {e}")
-            return ""
+            logger.error(f"详细综述报告生成失败: {e}")
+            return f"⚠ 抱歉，AI 综述生成时遇到错误: {e}\n但文献列表已导出，请查看附件。"
 
     def _help_text(self) -> str:
         """生成帮助信息"""
